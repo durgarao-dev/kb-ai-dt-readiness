@@ -1,0 +1,113 @@
+{
+  "seed": 20261024,
+  "n_enterprises": 2000,
+  "n_folds": 5,
+  "n_bootstrap": 2000,
+  "benchmark": 0.6,
+  "prevalence": 0.4,
+  "ceiling_auc": 0.963,
+  "dgp": {
+    "latent": "Beta(2, 2)",
+    "index": "2.40*know_how*know_who + 1.60*know_what*know_why",
+    "index_noise_sd": 0.18,
+    "indicator_noise_sd": 0.12
+  },
+  "n_decision_cases": 1200,
+  "cronbach_alpha": {
+    "Know-how": 0.914,
+    "Know-who": 0.912,
+    "Know-what": 0.869,
+    "Know-why": 0.876
+  },
+  "metrics": {
+    "KAID": {
+      "roc_auc": 0.923,
+      "average_precision": 0.898,
+      "brier": 0.111,
+      "ece": 0.037,
+      "balanced_accuracy": 0.828
+    },
+    "Knowledge logistic": {
+      "roc_auc": 0.919,
+      "average_precision": 0.894,
+      "brier": 0.112,
+      "ece": 0.024,
+      "balanced_accuracy": 0.821
+    },
+    "Raw gradient boosting": {
+      "roc_auc": 0.917,
+      "average_precision": 0.886,
+      "brier": 0.116,
+      "ece": 0.033,
+      "balanced_accuracy": 0.827
+    },
+    "Raw logistic": {
+      "roc_auc": 0.919,
+      "average_precision": 0.894,
+      "brier": 0.112,
+      "ece": 0.022,
+      "balanced_accuracy": 0.82
+    }
+  },
+  "auc_ci": {
+    "KAID": [
+      0.911,
+      0.934
+    ],
+    "Knowledge logistic": [
+      0.906,
+      0.93
+    ],
+    "Raw gradient boosting": [
+      0.905,
+      0.928
+    ],
+    "Raw logistic": [
+      0.907,
+      0.93
+    ]
+  },
+  "kaid_minus_raw_boosting_auc": [
+    -0.0,
+    0.012
+  ],
+  "kaid_minus_knowledge_logistic_auc": [
+    -0.003,
+    0.011
+  ],
+  "hit_rate": {
+    "KAID counterfactual": 0.747,
+    "Equal-weight gap": 0.688,
+    "Importance only": 0.372
+  },
+  "hit_rate_ci": {
+    "KAID counterfactual": [
+      0.722,
+      0.771
+    ],
+    "Equal-weight gap": [
+      0.662,
+      0.714
+    ],
+    "Importance only": [
+      0.344,
+      0.399
+    ]
+  },
+  "importance_mean": {
+    "Know-how": 0.17,
+    "Know-who": 0.186,
+    "Know-what": 0.104,
+    "Know-why": 0.099
+  },
+  "readiness_bands": {
+    "lagging": 0.548,
+    "emerging": 0.125,
+    "ready": 0.328
+  },
+  "versions": {
+    "numpy": "2.2.6",
+    "scikit-learn": "1.9.1",
+    "matplotlib": "3.11.2"
+  }
+}
