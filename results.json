@@ -1,112 +1,186 @@
 {
   "seed": 20261024,
-  "n_enterprises": 2000,
+  "n_enterprises": 360,
   "n_folds": 5,
-  "n_bootstrap": 2000,
-  "benchmark": 0.6,
-  "prevalence": 0.4,
-  "ceiling_auc": 0.963,
-  "dgp": {
-    "latent": "Beta(2, 2)",
-    "index": "2.40*know_how*know_who + 1.60*know_what*know_why",
-    "index_noise_sd": 0.18,
-    "indicator_noise_sd": 0.12
+  "delta": 0.15,
+  "pair_weights": {
+    "know_how_x_know_who": 4.0,
+    "know_what_x_know_why": 0.9
   },
-  "n_decision_cases": 1200,
-  "cronbach_alpha": {
-    "Know-how": 0.914,
-    "Know-who": 0.912,
-    "Know-what": 0.869,
-    "Know-why": 0.876
-  },
-  "metrics": {
-    "KAID": {
-      "roc_auc": 0.923,
-      "average_precision": 0.898,
-      "brier": 0.111,
-      "ece": 0.037,
-      "balanced_accuracy": 0.828
+  "indicator_noise_sd": 0.14,
+  "audit_noise_sd": 0.1,
+  "ceiling_mean_lift": 0.372,
+  "summary": [
+    {
+      "method": "Lowest score",
+      "hit_rate": 0.406,
+      "mean_lift": 0.195,
+      "lift_ci": [
+        0.179,
+        0.211
+      ]
     },
-    "Knowledge logistic": {
-      "roc_auc": 0.919,
-      "average_precision": 0.894,
-      "brier": 0.112,
-      "ece": 0.024,
-      "balanced_accuracy": 0.821
+    {
+      "method": "Raw gradient boosting",
+      "hit_rate": 0.711,
+      "mean_lift": 0.336,
+      "lift_ci": [
+        0.322,
+        0.349
+      ]
     },
-    "Raw gradient boosting": {
-      "roc_auc": 0.917,
-      "average_precision": 0.886,
-      "brier": 0.116,
-      "ece": 0.033,
-      "balanced_accuracy": 0.827
+    {
+      "method": "Equal-weight knowledge rules",
+      "hit_rate": 0.461,
+      "mean_lift": 0.257,
+      "lift_ci": [
+        0.238,
+        0.275
+      ]
     },
-    "Raw logistic": {
-      "roc_auc": 0.919,
-      "average_precision": 0.894,
-      "brier": 0.112,
-      "ece": 0.022,
-      "balanced_accuracy": 0.82
+    {
+      "method": "KAID",
+      "hit_rate": 0.889,
+      "mean_lift": 0.367,
+      "lift_ci": [
+        0.356,
+        0.378
+      ]
+    }
+  ],
+  "comparisons": [
+    {
+      "comparison": "KAID vs Lowest score",
+      "kaid_mean_lift": 0.367,
+      "baseline_mean_lift": 0.195,
+      "mean_difference": 0.172,
+      "difference_ci": [
+        0.154,
+        0.19
+      ],
+      "wilcoxon_p": 2.4368991944339064e-34,
+      "holm_p": 7.310697583301719e-34,
+      "hit_rate_difference": 0.483,
+      "mcnemar_p": 3.695932450674364e-51
+    },
+    {
+      "comparison": "KAID vs Raw gradient boosting",
+      "kaid_mean_lift": 0.367,
+      "baseline_mean_lift": 0.336,
+      "mean_difference": 0.031,
+      "difference_ci": [
+        0.023,
+        0.039
+      ],
+      "wilcoxon_p": 1.4245075215635332e-13,
+      "holm_p": 1.4245075215635332e-13,
+      "hit_rate_difference": 0.178,
+      "mcnemar_p": 6.162186756126442e-12
+    },
+    {
+      "comparison": "KAID vs Equal-weight knowledge rules",
+      "kaid_mean_lift": 0.367,
+      "baseline_mean_lift": 0.257,
+      "mean_difference": 0.11,
+      "difference_ci": [
+        0.097,
+        0.124
+      ],
+      "wilcoxon_p": 1.8745414839389732e-31,
+      "holm_p": 3.7490829678779464e-31,
+      "hit_rate_difference": 0.428,
+      "mcnemar_p": 8.758115402030107e-47
+    }
+  ],
+  "sensitivity": [
+    {
+      "delta": 0.1,
+      "mean_lift": {
+        "Lowest score": 0.13,
+        "Raw gradient boosting": 0.216,
+        "Equal-weight knowledge rules": 0.171,
+        "KAID": 0.245
+      },
+      "hit_rate": {
+        "Lowest score": 0.406,
+        "Raw gradient boosting": 0.672,
+        "Equal-weight knowledge rules": 0.458,
+        "KAID": 0.889
+      }
+    },
+    {
+      "delta": 0.15,
+      "mean_lift": {
+        "Lowest score": 0.195,
+        "Raw gradient boosting": 0.336,
+        "Equal-weight knowledge rules": 0.257,
+        "KAID": 0.367
+      },
+      "hit_rate": {
+        "Lowest score": 0.406,
+        "Raw gradient boosting": 0.711,
+        "Equal-weight knowledge rules": 0.461,
+        "KAID": 0.889
+      }
+    },
+    {
+      "delta": 0.2,
+      "mean_lift": {
+        "Lowest score": 0.26,
+        "Raw gradient boosting": 0.464,
+        "Equal-weight knowledge rules": 0.338,
+        "KAID": 0.488
+      },
+      "hit_rate": {
+        "Lowest score": 0.406,
+        "Raw gradient boosting": 0.761,
+        "Equal-weight knowledge rules": 0.456,
+        "KAID": 0.889
+      }
+    }
+  ],
+  "case": {
+    "id": 215,
+    "observed": [
+      0.385,
+      0.328,
+      0.681,
+      0.873
+    ],
+    "latent": [
+      0.465,
+      0.283,
+      0.729,
+      0.862
+    ],
+    "oracle": 1,
+    "oracle_name": "Know-who",
+    "choices": {
+      "Lowest score": 1,
+      "Raw gradient boosting": 0,
+      "Equal-weight knowledge rules": 2,
+      "KAID": 1
+    },
+    "choice_names": {
+      "Lowest score": "Know-who",
+      "Raw gradient boosting": "Know-how",
+      "Equal-weight knowledge rules": "Know-what",
+      "KAID": "Know-who"
+    },
+    "lifts": {
+      "Lowest score": 0.279,
+      "Raw gradient boosting": 0.17,
+      "Equal-weight knowledge rules": 0.116,
+      "KAID": 0.279
     }
   },
-  "auc_ci": {
-    "KAID": [
-      0.911,
-      0.934
-    ],
-    "Knowledge logistic": [
-      0.906,
-      0.93
-    ],
-    "Raw gradient boosting": [
-      0.905,
-      0.928
-    ],
-    "Raw logistic": [
-      0.907,
-      0.93
-    ]
-  },
-  "kaid_minus_raw_boosting_auc": [
-    -0.0,
-    0.012
-  ],
-  "kaid_minus_knowledge_logistic_auc": [
-    -0.003,
-    0.011
-  ],
-  "hit_rate": {
-    "KAID counterfactual": 0.747,
-    "Equal-weight gap": 0.688,
-    "Importance only": 0.372
-  },
-  "hit_rate_ci": {
-    "KAID counterfactual": [
-      0.722,
-      0.771
-    ],
-    "Equal-weight gap": [
-      0.662,
-      0.714
-    ],
-    "Importance only": [
-      0.344,
-      0.399
-    ]
-  },
-  "importance_mean": {
-    "Know-how": 0.17,
-    "Know-who": 0.186,
-    "Know-what": 0.104,
-    "Know-why": 0.099
-  },
-  "readiness_bands": {
-    "lagging": 0.548,
-    "emerging": 0.125,
-    "ready": 0.328
+  "audit_mae": {
+    "KAID": 0.194,
+    "Raw gradient boosting": 0.242
   },
   "versions": {
     "numpy": "2.2.6",
+    "scipy": "1.16.0",
     "scikit-learn": "1.9.1",
     "matplotlib": "3.11.2"
   }

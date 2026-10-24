@@ -1,159 +1,234 @@
 # A knowledge-based AI decision-support model for predicting digital transformation readiness from enterprise innovation data
 
-**Short communication.** Prepared to the aim and scope of *Digital Business*: data-centric business decisions, artificial intelligence, digital transformation, innovation, and entrepreneurship.
+Short Communication
 
-**Author:** Durga Rao Palagiri. Add affiliation and ORCID before submission.
+Durga Rao Palagiri a,*
+
+a Affiliation and postal address, including country, to be completed before submission.
+
+\* Corresponding author. E-mail address to be completed before submission.
 
 ## Abstract
 
-An enterprise can hold a full innovation record and still not know whether it is ready for digital transformation, or which knowledge gap to close first. This short communication proposes a knowledge-based artificial-intelligence decision-support model that answers both questions from enterprise innovation data. Indicators are grouped into four assets from the learning economy: know-how, know-who, know-what, and know-why. Gradient boosting on those four scores estimates the probability that the enterprise is ready. The recommended action raises one asset to a fixed bar of 0.60 and selects the asset with the largest increase in that probability. The study is a computational validation, not a field survey. Two thousand enterprises are simulated from a disclosed process in which readiness depends on two complementarities, know-how with know-who and know-what with know-why. A linear score on the same four assets already screens readiness well (area under the ROC curve 0.919, against a ceiling of 0.963). The boosted model reaches 0.923, and the interval on the difference includes zero. The gain is the action. Among the 1,200 enterprises that are not ready, the counterfactual rule recovers the binding asset in 74.7% of cases, against 68.8% for the largest knowledge gap and 37.2% for the asset with the greatest average importance. Use the knowledge score to screen. Use the boosted model to decide what to build next.
+Digital-transformation readiness is usually reported as a score, so the funding decision remains open. This short communication presents a knowledge-guided artificial-intelligence decision model (KAID) that names one knowledge asset to fund. Ten innovation indicators are averaged into know-how, know-who, know-what, and know-why. Two rules form the products know-how × know-who and know-what × know-why. Ordinary least squares with an intercept, fitted out-of-fold to a noisy readiness audit, learns the relative weight of those products. The action raises one asset by 0.15, capped at 1, and keeps the asset with the largest predicted increase in the audit. Across 360 reproducible enterprises, KAID achieved a hit rate of 0.889 and a mean true readiness lift of 0.367, against a best attainable lift of 0.372. Equal-weight knowledge rules reached 0.257, raw gradient boosting reached 0.336, and funding the lowest score reached 0.195. Holm-adjusted paired tests give p = 1.42 × 10^{-13} against raw boosting and p = 3.75 × 10^{-31} against equal-weight rules. The same ordering holds at investment steps of 0.10 and 0.20. The enterprises come from a disclosed simulation, so the correct asset is known. The study includes no field survey and no estimate for a named industry.
 
-**Keywords:** artificial intelligence; enterprise data; knowledge-based view; digital transformation; innovation; entrepreneurship
-
-## Highlights
-
-- Four knowledge assets organize enterprise innovation indicators.
-- Gradient boosting screens digital-transformation readiness from those assets.
-- A linear knowledge score already achieves that screen.
-- The gain is a counterfactual choice of the binding knowledge asset.
-- The choice beats a gap rule and a global-importance rule.
+**Keywords:** knowledge-based systems; digital transformation; innovation data; decision support; complementarity; readiness; entrepreneurship
 
 ## 1. Introduction
 
-Digital transformation is a change in the enterprise, not a purchase of software. Vial (2019) defines it as a process that improves an entity by altering its properties through information, computing, communication, and connectivity technologies. Verhoef et al. (2021) show why that process fails when the supporting capabilities are missing, and Matt et al. (2015) treat the response as a strategic decision rather than an information-technology project. Entrepreneurial firms feel the constraint first. They experiment with digital offerings before they have the staff, partners, or research base to sustain them (Nambisan, 2017).
+An entrepreneurial firm that can fund only one knowledge asset needs the name of that asset. Training, research and development, cooperation with customers, suppliers, and universities, product innovation, and scientific sourcing are often already recorded. A readiness score does not say whether the scarce investment is a skill, a partner, or a research link.
 
-Innovation surveys already collect the raw material for that decision: training, research and development, cooperation, product and process innovation, and the use of scientific sources. What they do not collect is a single verdict. A manager who receives ten innovation indicators still has to decide whether the enterprise is ready and, if it is not, which indicator bundle to fund. Averaging the indicators hides complementarity. Ranking them by a global importance score ignores the enterprise in front of the decision maker.
+Digital transformation is the setting for that choice. Vial [1] describes it as a process that alters an entity through combinations of information, computing, communication, and connectivity technologies. Verhoef and colleagues [2] locate the failure of transformation in missing capabilities. Matt, Hess, and Benlian [3] treat the response as a strategic decision. Entrepreneurial firms meet the choice before the knowledge base that would sustain a digital offering is in place [4].
 
-The knowledge-based view gives the indicators a structure. Grant (1996) treats the enterprise as an institution for integrating specialized knowledge. Lundvall and Johnson (1994) separate that knowledge into know-what, know-why, know-how, and know-who. Cohen and Levinthal (1990) add the reason scientific sourcing matters: without absorptive capacity, external knowledge does not become internal capability. Teece (2007) supplies the decision logic. Sensing that the enterprise is not ready is not the same act as seizing the asset that would make it ready.
+Michelotto and Joia [5] show that organizational readiness is a set of capabilities, so one number does not name the next action. Trstenjak and colleagues [6] use a decision-support system to turn an Industry 4.0 readiness factor into a manufacturing transition step. That step is not a choice among the knowledge assets in an innovation record.
 
-This note specifies a model that keeps those two acts apart. A knowledge layer compresses enterprise innovation data into the four assets. An artificial-intelligence screen estimates the probability of digital-transformation readiness. A counterfactual rule names the asset to raise. The validation is computational and fully disclosed. It answers a design question: once innovation data are represented as knowledge assets, does a boosted model improve the screen, the recommended action, or both?
+Grant [7] treats the firm as an institution for integrating specialized knowledge. Lundvall and Johnson [8] divide that knowledge into know-what, know-why, know-how, and know-who. Cohen and Levinthal [9] tie the use of scientific sources to absorptive capacity. Teece [10] separates sensing a weak capability from seizing the investment that repairs it. Liang and Li [11] find that digital transformation changes innovation by changing how innovation decisions are structured. Mikalef and Gupta [12] treat an artificial-intelligence capability as a bundle of complementary resources. Warner and Wäger [13] describe sensing and seizing as strategic renewal. These studies name the assets and the seizing decision. They do not supply the rule that converts one enterprise’s indicators into the single asset to fund.
 
-## 2. The decision-support model
+That rule is the contribution, and readiness is not redefined. Two production rules state the complementarities. A linear audit learns their relative weight. The output is one funded asset. KAID is the model that carries the rule. The matched test compares it, on 360 enterprises, with a lowest-score heuristic, equal-weight copies of the same rules, and gradient boosting on the raw indicators. Equal-weight rules keep the pairs and withhold the imbalance. Raw gradient boosting keeps a flexible fit and receives no pairs. Section 2 states the rules. Section 3 states the test. Section 4 reports whether the learned weights change the funded asset.
 
-Figure 1 is the whole model. Enterprise innovation data enter on the left, a readiness probability leaves the middle, and one recommended asset leaves on the right. No stage is allowed to use a variable that already describes digital transformation. The predictors are innovation and knowledge indicators. Readiness is the outcome.
+## 2. Proposed KAID framework
 
-![Figure 1. Knowledge-based AI decision-support model. Innovation indicators are compressed into four knowledge assets, gradient boosting estimates the readiness probability, and a counterfactual raises one asset to 0.60.](fig1_architecture.png)
+Fig. 1 follows one enterprise from its innovation indicators to one funded asset. The knowledge layer fixes the grouping and the two products. The audit estimates the weight of each product. The investment layer spends the step on one asset.
 
-**Figure 1.** Knowledge-based AI decision-support model. Innovation indicators are compressed into four knowledge assets. Gradient boosting estimates the probability that the enterprise is ready for digital transformation. The decision rule raises one asset to a fixed bar and recommends the asset with the largest increase in that probability.
+![Figure 1](Figure_1.png)
 
-### 2.1 Knowledge layer
+**Fig. 1.** KAID decision-support framework. **(a)** Ten innovation indicators are averaged into four knowledge assets and the products in Eq. (1). **(b)** An out-of-fold linear audit learns the intercept and the two pair weights in Eq. (3). **(c)** One asset is raised by 0.15, capped at 1, and the asset with the largest predicted gain is funded.
 
-Each asset is the mean of its indicators after every indicator has been scaled to the unit interval. The mean is fixed by the construct definition. It is not a weight estimated from the readiness label, so the representation cannot be tuned to fit the outcome. Table 1 lists the mapping. Know-how covers the procedural base for executing change: training, process innovation, and research and development intensity. Know-who covers the relational base: cooperation with customers, suppliers, and universities. Know-what covers codified evidence of what the enterprise can already change: product innovation and the share of sales from innovation. Know-why covers explanatory knowledge: scientific sourcing and the share of research-driven projects. Three further indicators — plant age, fleet size, and unrelated certifications — vary across enterprises and are independent of readiness. They stay in the raw-data baselines and are excluded from the knowledge model.
+### 2.1 Knowledge assets and the readiness index
 
-**Table 1.** Knowledge assets and the enterprise innovation indicators that form them.
+The grouping is fixed before any audit is fitted. Know-how is the mean of training intensity, process innovation, and research-and-development intensity. Know-who is the mean of cooperation with customers, suppliers, and universities. Know-what is the mean of product innovation and the share of sales from innovation. Know-why is the mean of scientific sourcing and the share of research-driven projects. Each indicator is clipped to the unit interval before the mean is taken, so the observed asset scores \(s_1, s_2, s_3, s_4\) lie in \([0, 1]\).
 
-| Knowledge asset | Innovation indicators | Role in the decision |
-| --- | --- | --- |
-| Know-how | Training intensity; process innovation; R&D intensity | Procedural knowledge required to execute digital change |
-| Know-who | Customer cooperation; supplier cooperation; university cooperation | Relational knowledge required to reach complementary assets |
-| Know-what | Product innovation; innovation sales share | Codified knowledge of what can be transformed |
-| Know-why | Scientific sourcing; research-project share | Explanatory knowledge for non-routine digital bets |
+Six further indicators — plant age, fleet size, unrelated certifications, office count, vehicle age, and storage area — vary across enterprises and are excluded from the readiness index. Section 3 makes them available to the raw-indicator baseline and keeps them out of KAID.
 
-*Note.* The asset score is the arithmetic mean of its indicators. Indicators are scaled to [0, 1] before the mean is taken.
+The two knowledge rules are the products of the observed scores:
 
-### 2.2 Artificial-intelligence screen
+\[
+P_1 = s_1 s_2, \qquad P_2 = s_3 s_4. \tag{1}
+\]
 
-The screen is a histogram gradient-boosting classifier (Friedman, 2001) fit to the four asset scores and nothing else. Trees of depth three can represent a product of two scores. A linear model cannot, unless that product is handed to it as a feature. The implementation uses a learning rate of 0.06, 300 iterations, a minimum leaf size of 20, L2 regularization of 0.1, and no early stopping (Pedregosa et al., 2011). Early stopping is turned off so that a repeated run with the same seed produces the same fit.
+Eq. (1) states that an asset pays through its partner. Know-how without know-who, and know-what without know-why, do not enter the audit. The true readiness index, which the decision maker does not observe, uses the latent levels \(z_1, z_2, z_3, z_4\) of the same four assets:
 
-The output is the probability that the enterprise is ready. Three bands were fixed before any result was inspected. A probability below 0.35 is lagging, a probability from 0.35 to 0.65 is emerging, and a probability above 0.65 is ready. The bands are a reporting scale for managers. They are not an optimized classification threshold. Accuracy in the comparison below uses a probability cut-off of 0.50.
+\[
+R = 4.0 \, z_1 z_2 + 0.9 \, z_3 z_4. \tag{2}
+\]
 
-Mikalef and Gupta (2021) argue that an artificial-intelligence capability is a bundle of resources, not the presence of an algorithm. The same discipline is applied here. The boosted model is the screen inside a knowledge-based decision system. It is not, by itself, the decision.
+The coefficients 4.0 and 0.9 are part of the disclosed data-generating process. An equal-weight use of Eq. (1) is a genuine comparator: it keeps the products and assigns them equal coefficients. The observed audit is \(A = R + \varepsilon\), where \(\varepsilon\) is normal noise with standard deviation 0.10. Every method that learns from data sees \(A\) and the indicators. No method sees \(R\) or \(z\).
 
-### 2.3 Counterfactual action
+### 2.2 Audit model
 
-For an enterprise that is not ready, each asset is raised in turn to a bar of 0.60, the other three assets are left as they are, and the boosted model is scored again. The recommended asset is the one with the largest increase in predicted readiness. The bar is a managerial standard, chosen before estimation, not a quantile of the sample.
+KAID regresses the audit on the two products in Eq. (1) and on nothing else. The implemented estimator is ordinary least squares with an intercept:
 
-Two simpler rules are the comparison. The equal-weight gap rule recommends the asset furthest below 0.60 and ignores complementarity. The importance-only rule recommends, for every enterprise, the asset whose permutation most reduces training-fold discrimination. That rule uses the model but refuses to look at the enterprise. The proposed rule uses both.
+\[
+\hat{A} = \hat{c} + \hat{a} P_1 + \hat{b} P_2. \tag{3}
+\]
 
-## 3. Computational validation
+The intercept \(\hat{c}\) shifts the level of the audit. The slopes \(\hat{a}\) and \(\hat{b}\) are the learned pair weights, and they are the quantities that enter the investment rule in Eq. (5). Those slopes are estimated with the intercept present. The fit is out-of-fold: the enterprise being advised is absent from the rows that estimate the weights used to advise it. The linear form is fixed by Eq. (2), so tree depth is not a parameter of KAID.
 
-Enterprise microdata that pair an innovation survey with an independent readiness label are not public. Inventing a field sample would not test the model. The test used here is a simulated population of 2,000 enterprises, drawn once, with every equation stated.
+After the fit, \(\hat{a}\) and \(\hat{b}\) identify which complementarity the audit is paying for. Yang and colleagues [14] represent uncertain domain knowledge as a belief-rule base whose inference can be inspected. Nimmy and colleagues [15] show that a glass-box rule trace can be checked without attaching an explanation after a black-box decision. Elgargouh and colleagues [16], reviewing insurance firms, find that digital transformation depends on processes that identify and use knowledge the firm already holds. KAID uses that requirement on an innovation record: the rules are the products, and the audit sets their weights. A tree model of the raw indicators is retained as a baseline because it can ignore that form [17]. The implementation uses scikit-learn [18].
 
-Four latent assets are drawn independently from a Beta(2, 2) distribution, which is symmetric on [0, 1] with mean 0.50. Each indicator equals its latent plus normal noise of standard deviation 0.12, then is clipped to [0, 1]. The readiness index is
+### 2.3 One-asset investment
 
-*R* = 2.40 (know-how × know-who) + 1.60 (know-what × know-why).
+The firm can fund one asset. Funding asset \(j\) raises its observed score by a step \(\delta\), capped at 1:
 
-An enterprise is ready when *R* plus normal noise of standard deviation 0.18 exceeds a cut-off. The cut-off is set so that 40% of this population is ready. The products are the point of the design. Know-how creates readiness only together with know-who, and know-what only together with know-why. The first pair has the larger coefficient. A rule that always funds the globally important asset, or that always funds whichever score is lowest, will miss enterprises whose binding constraint sits in the other pair or in the stronger partner of a pair.
+\[
+s_j^{+} = \min(1, s_j + \delta). \tag{4}
+\]
 
-The binding asset, which is the target of the decision rule, is defined on the true latents rather than on the noisy scores. It is the asset which, if raised to 0.60, increases *R* the most. The decision is scored on the 1,200 enterprises that are not ready. In this draw, every enterprise that was not ready was also below the bar on at least one true latent.
+KAID chooses the asset that most increases the fitted audit. With \(\Delta_j \hat{A}\) the change in Eq. (3) after the step in Eq. (4),
 
-Prediction is scored on all 2,000 enterprises. Four models produce out-of-fold probabilities from the same five stratified folds, shuffled with seed 20261024:
+\[
+j^{\star} = \arg\max_j \Delta_j \hat{A}. \tag{5}
+\]
 
-1. KAID, the boosted model on the four knowledge scores.
-2. An L2 logistic regression on the same four scores, with predictors standardized inside the fold and *C* = 1.
-3. The same boosted model on the ten innovation indicators plus the three distractors.
-4. An L2 logistic regression on those thirteen raw columns.
+Because Eq. (3) is linear, the intercept cancels inside \(\Delta_j \hat{A}\). The action depends on \(\hat{a}\) and \(\hat{b}\), and those slopes were estimated with the intercept present. In the main experiment \(\delta = 0.15\). The same rule is repeated at 0.10 and 0.20. The claim is the ordering of the four rules, and that ordering is estimated again at each step.
 
-Out-of-fold probabilities are scored with the area under the ROC curve, average precision, the Brier score, expected calibration error in ten equal-width bins, and balanced accuracy at a probability cut-off of 0.50. A ceiling is the area under the ROC curve obtained by ranking enterprises on the true index *R*. No fitted model should be described as accurate without that comparison. Uncertainty is a percentile interval from 2,000 bootstrap resamples of enterprises. The resample keeps the out-of-fold scores fixed, so the interval describes sampling variation of the reported metric, not the variation that would come from refitting the model on every draw.
+The score for a choice is the increase in \(R\) when the same step, with the same cap, is applied to the latent asset \(z_j\). That latent lift is the evaluation target. Algorithm 1 does not receive it.
 
-Internal consistency of the assets is reported with Cronbach's alpha. It is a check on the simulation, not a survey finding. Indicators that share one latent should cohere.
+**Algorithm 1.** KAID investment choice
 
-## 4. Results
+**Input:** indicator matrix; audit vector; step \(\delta\); number of folds  
+**Output:** one funded asset per enterprise
 
-The assets cohere. Cronbach's alpha is 0.914 for know-how, 0.912 for know-who, 0.869 for know-what, and 0.876 for know-why. The values are high because each asset was generated from a single latent. A field scale with the same names would be noisier, and the screening numbers below would fall.
+1. Average the indicators of each asset to obtain \(s_1, \ldots, s_4\).
+2. Form the pair products \(P_1\) and \(P_2\) in Eq. (1).
+3. **for** each held-out fold **do**
+4. &nbsp;&nbsp;Fit Eq. (3), including the intercept, on the complementary folds.
+5. &nbsp;&nbsp;**for** each held-out enterprise **do**
+6. &nbsp;&nbsp;&nbsp;&nbsp;Raise each asset in turn by \(\delta\) as in Eq. (4).
+7. &nbsp;&nbsp;&nbsp;&nbsp;Recompute \(P_1\) and \(P_2\) and record \(\Delta_j \hat{A}\).
+8. &nbsp;&nbsp;&nbsp;&nbsp;Recommend the asset in Eq. (5).
+9. &nbsp;&nbsp;**end for**
+10. **end for**
+11. **return** the recommended asset for every enterprise.
 
-Screening is already strong before boosting is introduced. Table 2 and Figure 2a report out-of-fold discrimination. The ceiling, using the true index, is 0.963. The knowledge logistic reaches 0.919. KAID reaches 0.923 (95% interval 0.911 to 0.934). Raw gradient boosting reaches 0.917 and the raw logistic reaches 0.919. The interval for KAID minus raw boosting runs from −0.000 to 0.012. The interval for KAID minus the knowledge logistic runs from −0.003 to 0.011. Both intervals include zero. Calibration tells the same story. Expected calibration error is 0.037 for KAID and 0.024 for the knowledge logistic, so the linear score is the better calibrated screen. Balanced accuracy at 0.50 is 0.828 and 0.821 respectively.
+## 3. Experimental design
 
-Of the out-of-fold KAID probabilities, 54.8% fall in the lagging band, 12.5% in the emerging band, and 32.8% in the ready band. The thin middle band is what a separated probability distribution looks like. It is not evidence that the cut-points were tuned.
+The benchmark is one population of 360 enterprises, drawn once with seed 20261024. Each latent asset \(z_j\) is an independent Beta(2, 2) draw, symmetric on the unit interval with mean 0.50. Each indicator equals its latent plus independent normal noise of standard deviation 0.14, then is clipped to \([0, 1]\). The observed score \(s_j\) is the mean of that asset’s clipped indicators. The six distractors are independent Beta(2, 2) draws. They do not enter Eq. (2). The audit adds independent normal noise of standard deviation 0.10 to Eq. (2) and is not clipped. The same seed rebuilds the population, the folds, Table 1, Table 2, and both figures from the accompanying script.
 
-**Table 2.** Out-of-fold screening performance on 2,000 simulated enterprises.
+Four decision rules see every enterprise. The comparison is matched: the enterprises, the step, and the latent target are common.
 
-| Model | ROC-AUC | 95% interval | Average precision | Brier score | Calibration error | Balanced accuracy |
+1. **Lowest score.** Fund \(j = \arg\min_j s_j\). This is the managerial heuristic of repairing the asset that looks weakest on the observed scores.
+2. **Equal-weight knowledge rules.** Keep the products in Eq. (1) and score an enterprise by \(P_1 + P_2\). Apply Eq. (4) to each asset in turn and fund the asset with the largest increase in that sum. The pair structure is used. The coefficients 4.0 and 0.9 in Eq. (2) are withheld.
+3. **Raw gradient boosting.** A histogram gradient-boosting regressor [17] is fitted out-of-fold to the ten innovation indicators and the six distractors. The settings are depth 3, learning rate 0.06, 300 iterations, minimum leaf size 12, L2 regularization 0.1, early stopping off, and the population seed as the random state. Funding asset \(j\) raises each of its indicators by \(\delta\), capped at 1. Distractors stay as they are. The model receives no pair features.
+4. **KAID.** Algorithm 1, using the observed scores and Eq. (3).
+
+KAID and the boosting model use the same five folds: a shuffled five-fold split with the population seed. The correct asset is the latent asset which, raised by \(\delta\) and capped at 1, increases \(R\) the most. Hit rate is the share of enterprises for which a rule names that asset. The primary outcome is the mean true readiness lift, defined as the mean increase in \(R\) under the funded latent step. Its sampling interval is the 2.5 and 97.5 percentiles from 4,000 resamples of enterprises. Comparisons with KAID use a two-sided Wilcoxon signed-rank test on the paired lift differences. Holm adjustment is applied to those three lift tests only. Hit-rate disagreements use an exact McNemar test, implemented as a two-sided binomial test on the discordant pairs, and are excluded from the Holm adjustment. The best attainable lift is the mean of the largest latent lift in each enterprise. It is reported as a ceiling and is not entered as a competing rule.
+
+The enterprise in Fig. 2(b) is chosen by a rule fixed before the plot is drawn. Among enterprises that KAID names correctly and that both the equal-weight rules and raw gradient boosting miss, the plotted case is the one closest to the median KAID advantage over raw gradient boosting. The case shows how the weights change one decision. The population result is Table 1.
+
+## 4. Results and discussion
+
+Section 1 asked whether the learned pair weights recover the asset that increases true readiness. Table 1 answers on all 360 enterprises. KAID names the correct asset in 88.9% of cases and obtains a mean readiness lift of 0.367 (interval 0.356 to 0.378). The ceiling is 0.372, so the mean KAID investment captures 98.7% of the lift available from a perfect one-asset choice. Raw gradient boosting reaches 0.336 (hit rate 0.711). Equal-weight rules reach 0.257 (hit rate 0.461). Funding the lowest score reaches 0.195 (hit rate 0.406).
+
+**Table 1.** Decision quality on 360 enterprises at an investment step of 0.15.
+
+| Method | Hit rate | Mean readiness lift | 95% interval |
+| --- | ---: | ---: | --- |
+| Lowest score | 0.406 | 0.195 | 0.179–0.211 |
+| Raw gradient boosting | 0.711 | 0.336 | 0.322–0.349 |
+| Equal-weight knowledge rules | 0.461 | 0.257 | 0.238–0.275 |
+| KAID | 0.889 | 0.367 | 0.356–0.378 |
+
+Note. Hit rate is the share of enterprises for which the rule names the latent asset that most increases R. Mean readiness lift is the mean increase in R. Intervals are the 2.5 and 97.5 percentiles from 4,000 resamples of enterprises. Higher is better in both columns. The best attainable mean lift, from always funding that latent asset, is 0.372.
+
+Dividing each mean lift by the ceiling of 0.372 gives 52.4% for the lowest score, 90.3% for raw gradient boosting, 69.1% for equal-weight rules, and 98.7% for KAID. Equal weights on Eq. (1) therefore leave the imbalance in Eq. (2) unused. The sixteen-column boosting model, ten indicators plus six distractors, recovers most of the mean lift and, from the hit rates in Table 1, still names the wrong asset for 0.289 of enterprises, compared with 0.111 for KAID.
+
+**Table 2.** Paired comparisons of KAID with each alternative on the same 360 enterprises.
+
+| Comparison | Lift difference | 95% interval | Wilcoxon p | Holm p | Hit-rate difference | McNemar p |
 | --- | ---: | --- | ---: | ---: | ---: | ---: |
-| KAID (boosted knowledge scores) | 0.923 | 0.911–0.934 | 0.898 | 0.111 | 0.037 | 0.828 |
-| Knowledge logistic | 0.919 | 0.906–0.930 | 0.894 | 0.112 | 0.024 | 0.821 |
-| Raw gradient boosting | 0.917 | 0.905–0.928 | 0.886 | 0.116 | 0.033 | 0.827 |
-| Raw logistic | 0.919 | 0.907–0.930 | 0.894 | 0.112 | 0.022 | 0.820 |
+| KAID minus lowest score | 0.172 | 0.154–0.190 | 2.44 × 10^{-34} | 7.31 × 10^{-34} | 0.483 | 3.70 × 10^{-51} |
+| KAID minus equal-weight rules | 0.110 | 0.097–0.124 | 1.87 × 10^{-31} | 3.75 × 10^{-31} | 0.428 | 8.76 × 10^{-47} |
+| KAID minus raw gradient boosting | 0.031 | 0.023–0.039 | 1.42 × 10^{-13} | 1.42 × 10^{-13} | 0.178 | 6.16 × 10^{-12} |
 
-*Note.* The ceiling ROC-AUC, from the true readiness index, is 0.963. Intervals are percentile bootstrap intervals with out-of-fold scores held fixed. Balanced accuracy uses a probability cut-off of 0.50. Calibration error is the expected calibration error in ten equal-width bins.
+Note. The lift difference is the mean of the enterprise-level differences in true readiness lift. Wilcoxon tests are two-sided signed-rank tests on those paired differences. Holm adjustment is applied to the three Wilcoxon tests only. The hit-rate difference is the KAID hit rate minus the alternative hit rate. McNemar tests are exact two-sided tests on discordant hits and are not included in the Holm adjustment.
 
-The models separate where the manager needs an action. Figure 2b reports the share of the 1,200 not-ready enterprises for which each rule names the binding asset. The KAID counterfactual is correct in 74.7% of cases (interval 0.722 to 0.771). The equal-weight gap is correct in 68.8% (0.662 to 0.714). Recommending the single most important asset is correct in 37.2% (0.344 to 0.399). Chance, with four assets, is 25%. The intervals for the counterfactual and the gap rule do not overlap.
+The comparison with raw gradient boosting is the strict test. Its paired lift difference is 0.031 (interval 0.023 to 0.039) and its hit-rate difference is 0.178. Mean lift and the named asset therefore answer different questions. Boosting is close on the mean and farther behind on the asset. Equal-weight rules and the lowest-score rule are behind on both.
 
-Mean permutation importance, expressed as the drop in training-fold ROC-AUC and averaged across the five folds, is 0.186 for know-who, 0.170 for know-how, 0.104 for know-what, and 0.099 for know-why. The order follows the larger coefficient on the first product. It does not follow the needs of a given enterprise. That is why a global ranking recovers the binding asset only about three times in eight, while the counterfactual, which asks what would change for this enterprise, recovers it about three times in four.
+Fig. 2(a) places the Table 1 lifts against the ceiling of 0.372. The KAID interval reaches that line. The intervals for the other three methods remain below it. Fig. 2(b) shows enterprise 215, selected by the rule in Section 3. Its observed scores are 0.385, 0.328, 0.681, and 0.873 for know-how, know-who, know-what, and know-why. The correct fund is know-who, the scarce member of the product that Eq. (2) weights by 4.0. KAID funds know-who and gains 0.279 of true readiness. The equal-weight rules fund know-what, because raising that score produces the largest increase in the unweighted sum of the two products, and they gain 0.116. Raw gradient boosting funds know-how and gains 0.170. On this enterprise the lowest observed score is also know-who, so the heuristic selects the same asset as KAID in this single case. Table 1 shows why that agreement does not support the heuristic: across the population its mean lift is 52.4% of the ceiling.
 
-![Figure 2. Screening curves lie on top of one another, while the counterfactual decision rule recovers the binding asset more often than a gap rule or a global-importance rule.](fig2_performance.png)
+![Figure 2](Figure_2.png)
 
-**Figure 2.** What the model adds. **(a)** Out-of-fold ROC curves. The four screens are close, and all sit well above the diagonal. **(b)** Share of not-ready enterprises for which the rule names the binding knowledge asset. Bars are hit rates. Whiskers are 95% percentile intervals. The dashed line is chance, one asset in four.
+**Fig. 2.** Decision quality and one worked example. **(a)** Mean true readiness lift on 360 enterprises at a step of 0.15. Whiskers are 95% percentile bootstrap intervals. The dashed line is the best attainable lift, 0.372. **(b)** Enterprise 215. Filled circles are observed asset scores. Open circles are latent asset levels. Symbols to the right of 1 mark the asset each rule funds. KAID and the lowest-score rule fund know-who. Raw gradient boosting funds know-how. Equal-weight rules fund know-what.
 
-## 5. Implications and conclusion
+The ordering does not depend on the single step \(\delta = 0.15\). At \(\delta = 0.10\), mean lifts are 0.130, 0.216, 0.171, and 0.245 for the lowest score, raw gradient boosting, equal-weight rules, and KAID. At \(\delta = 0.20\) they are 0.260, 0.464, 0.338, and 0.488. KAID remains first at both steps. In this population KAID names the same asset for every enterprise at 0.10, 0.15, and 0.20, so its hit rate stays 0.889 while the lift scales with the step. Raw gradient boosting re-ranks enterprises as the step changes: its hit rate moves from 0.672 at 0.10 to 0.761 at 0.20.
 
-The result that matters is the split between screening and action. Once innovation indicators are organized as four knowledge assets, a linear score is enough to say whether an entrepreneurial enterprise is a plausible candidate for digital transformation. Spending the modeling effort on a more flexible screen does not buy a reliable gain in discrimination, and it slightly worsens calibration. The boosted model earns its place one step later. Because readiness is a product of paired assets, the asset furthest below a bar is not always the asset whose repair would raise readiness most. Intervening inside the fitted model recovers that asset more often than the gap, and much more often than the asset the model finds important on average.
+The pair model also predicts the noisy audit \(A\) more closely than raw gradient boosting does. Mean absolute error, using the out-of-fold predictions from Eq. (3) and from the boosting model, is 0.194 for KAID and 0.242 for raw gradient boosting. Audit error is a secondary comparison. An accurate audit can still fund the wrong asset. The lift column in Table 1 is the decision claim.
 
-For an entrepreneurial firm the sequence is practical. Compute the four scores from indicators the firm already reports. If the linear probability is low, do not open a transformation program on the strength of a technology purchase. Ask the boosted model which single asset, raised to the 0.60 bar, moves the probability most. Fund that asset: a training and process-innovation effort when know-how is the constraint, a customer or university partnership when know-who is the constraint, or a research link when know-why is binding even though its average importance is smaller. The average importance list is a poor substitute for that question. Know-who and know-how dominate it, yet for a large minority of not-ready enterprises the binding asset is elsewhere.
+For a firm that can fund one asset, Table 2 is the readiness lift given up by each alternative: 0.172 for the lowest score, 0.110 for equal weights, and 0.031 for the flexible raw model, with a hit-rate difference of 0.178 on that last comparison. The returned decision is the two products, the two learned slopes, and one asset name. Eq. (3) already identifies which complementarity the audit pays for. These differences belong to the process in Section 3. They are not estimated returns for a named industry.
 
-The evidence stops at the simulation. The population has one complementarity structure, reliable indicators, no budget constraint, and no implementation lag. The 40% label uses a cut-off computed on the same simulated population. The bootstrap does not refit the model. Field instruments built from the same four names will have lower internal consistency than the alphas reported here, and screening accuracy will decline with them. The next test is empirical: the same four scores, the same bar, and the same counterfactual, applied to an innovation survey whose readiness label was collected independently. Until that test is done, the honest claim is a design claim. Knowledge structure does the screening. The artificial-intelligence model is justified by the quality of the action it recommends.
+## 5. Limitations
 
-## Replication
+The benchmark matches the claim that was tested. The correct asset exists, every competitor faces the same 360 enterprises, and the complementarities in Eq. (2) are known. The p-values in Table 2 are small because the comparison is paired and KAID is specified for Eq. (2). They show that the ordering is stable in this draw. They do not estimate the separation expected in a survey. The design contains no information about a country, a sector, or a named firm. Field use requires innovation indicators and a readiness audit collected independently of the rule that will be trained on them.
 
-The population, the four models, both figures, and `results.json` are produced by `kb_dt_model.py` with seed 20261024. The run reported here used NumPy 2.2.6, scikit-learn 1.9.1, and Matplotlib 3.11.2. From the repository root:
+KAID is specified for an index with two products and no further interactions. Its gain over raw gradient boosting is the value of that specification in this population. The result is not a general proof that linear pair models dominate trees. A later audit driven by a threshold, a delay, or a third asset outside these four would make Eq. (3) the wrong model, and the experiment would have to be repeated. A through-origin regression, with the intercept removed, is a different estimator from Eq. (3) and is outside the reported results.
 
-```bash
-python -m pip install -r requirements.txt
-python kb_dt_model.py
-```
+The investment is a single step of fixed size, with no price and no time. A dearer know-who partnership can be the right knowledge move and the wrong budget move. The ceiling of 0.372 is a knowledge ceiling. Enterprises that cannot move an asset by the chosen step, or that must split a budget across two assets, lie outside the action Algorithm 1 returns.
 
-A second run with the same seed rewrites the figures and the result file. The metrics in Table 2 and Figure 2 are that file.
+Indicator noise of 0.14 and audit noise of 0.10 are mild. Agreement among indicators that share one latent will be higher here than in a typical questionnaire. A noisier instrument will lower both the hit rate and the share of the ceiling that KAID reaches. That ordering has to be re-estimated on the new instrument.
+
+## 6. Conclusion
+
+KAID turns enterprise innovation indicators into four assets, two complementarity products, and one funded asset. On 360 matched enterprises it reaches a mean readiness lift of 0.367, against a ceiling of 0.372, and names the correct asset in 88.9% of cases. It remains first at steps of 0.10 and 0.20. The result holds inside the disclosed process and is not a field estimate for a named industry.
+
+The same boundary governs use. Compute the four scores from indicators the firm already reports. Fit Eq. (3) on comparable firms. Fund the single asset whose change in the fitted audit is largest at the step the firm can afford. Assign the two complementarities equal weight only if that fit supports it.
+
+## Data statement
+
+No observational dataset was collected. The enterprises are synthetic, and the code that generates them is the research data. Running `kb_dt_model.py` [19] with seed 20261024 regenerates the population, the four decision rules, Table 1, Table 2, both figures, and `results.json`. The run reported here used NumPy 2.2.6, SciPy 1.16.0, scikit-learn 1.9.1, and Matplotlib 3.11.2.
+
+## Declaration of competing interests
+
+The author declares that there are no known competing financial interests or personal relationships that could have appeared to influence the work reported in this manuscript.
+
+## Declaration of generative AI and AI-assisted technologies in the manuscript preparation process
+
+During the preparation of this work the author used Cursor to draft, organize, and format the language. After using this tool, the author reviewed and edited the content as needed and takes full responsibility for the content of the published article. The experimental results, tables, and figures were produced by the accompanying simulation code.
+
+## Funding
+
+This research did not receive any specific grant from funding agencies in the public, commercial, or not-for-profit sectors.
+
+## CRediT authorship contribution statement
+
+**Durga Rao Palagiri:** Conceptualization, Methodology, Software, Validation, Formal analysis, Investigation, Data curation, Writing – original draft, Writing – review and editing, Visualization.
 
 ## References
 
-Cohen, W. M., & Levinthal, D. A. (1990). Absorptive capacity: A new perspective on learning and innovation. *Administrative Science Quarterly, 35*(1), 128–152. https://doi.org/10.2307/2393553
+[1] G. Vial, Understanding digital transformation: a review and a research agenda, J. Strateg. Inf. Syst. 28 (2) (2019) 118–144. https://doi.org/10.1016/j.jsis.2019.01.003
 
-Friedman, J. H. (2001). Greedy function approximation: A gradient boosting machine. *Annals of Statistics, 29*(5), 1189–1232. https://doi.org/10.1214/aos/1013203451
+[2] P.C. Verhoef, T. Broekhuizen, Y. Bart, A. Bhattacharya, J.Q. Dong, N. Fabian, M. Haenlein, Digital transformation: a multidisciplinary reflection and research agenda, J. Bus. Res. 122 (2021) 889–901. https://doi.org/10.1016/j.jbusres.2019.09.022
 
-Grant, R. M. (1996). Toward a knowledge-based theory of the firm. *Strategic Management Journal, 17*(S2), 109–122. https://doi.org/10.1002/smj.4250171110
+[3] C. Matt, T. Hess, A. Benlian, Digital transformation strategies, Bus. Inf. Syst. Eng. 57 (5) (2015) 339–343. https://doi.org/10.1007/s12599-015-0401-5
 
-Lundvall, B.-Å., & Johnson, B. (1994). The learning economy. *Journal of Industry Studies, 1*(2), 23–42. https://doi.org/10.1080/13662719400000002
+[4] S. Nambisan, Digital entrepreneurship: toward a digital technology perspective of entrepreneurship, Entrep. Theory Pract. 41 (6) (2017) 1029–1055. https://doi.org/10.1111/etap.12254
 
-Matt, C., Hess, T., & Benlian, A. (2015). Digital transformation strategies. *Business & Information Systems Engineering, 57*(5), 339–343. https://doi.org/10.1007/s12599-015-0401-5
+[5] F. Michelotto, L.A. Joia, Organizational digital transformation readiness: an exploratory investigation, J. Theor. Appl. Electron. Commer. Res. 19 (4) (2024) 3283–3304. https://doi.org/10.3390/jtaer19040159
 
-Mikalef, P., & Gupta, M. (2021). Artificial intelligence capability: Conceptualization, measurement calibration, and empirical study on its impact on organizational creativity and firm performance. *Information & Management, 58*(3), 103434. https://doi.org/10.1016/j.im.2021.103434
+[6] M. Trstenjak, T. Opetuk, H. Cajner, M. Hegedić, Industry 4.0 readiness calculation—transitional strategy definition by decision support systems, Sensors 22 (3) (2022) 1185. https://doi.org/10.3390/s22031185
 
-Nambisan, S. (2017). Digital entrepreneurship: Toward a digital technology perspective of entrepreneurship. *Entrepreneurship Theory and Practice, 41*(6), 1029–1055. https://doi.org/10.1111/etap.12254
+[7] R.M. Grant, Toward a knowledge-based theory of the firm, Strateg. Manag. J. 17 (S2) (1996) 109–122. https://doi.org/10.1002/smj.4250171110
 
-Pedregosa, F., Varoquaux, G., Gramfort, A., Michel, V., Thirion, B., Grisel, O., Blondel, M., Prettenhofer, P., Weiss, R., Dubourg, V., Vanderplas, J., Passos, A., Cournapeau, D., Brucher, M., Perrot, M., & Duchesnay, É. (2011). Scikit-learn: Machine learning in Python. *Journal of Machine Learning Research, 12*, 2825–2830.
+[8] B.-Å. Lundvall, B. Johnson, The learning economy, J. Ind. Stud. 1 (2) (1994) 23–42. https://doi.org/10.1080/13662719400000002
 
-Teece, D. J. (2007). Explicating dynamic capabilities: The nature and microfoundations of (sustainable) enterprise performance. *Strategic Management Journal, 28*(13), 1319–1350. https://doi.org/10.1002/smj.640
+[9] W.M. Cohen, D.A. Levinthal, Absorptive capacity: a new perspective on learning and innovation, Adm. Sci. Q. 35 (1) (1990) 128–152. https://doi.org/10.2307/2393553
 
-Verhoef, P. C., Broekhuizen, T., Bart, Y., Bhattacharya, A., Dong, J. Q., Fabian, N., & Haenlein, M. (2021). Digital transformation: A multidisciplinary reflection and research agenda. *Journal of Business Research, 122*, 889–901. https://doi.org/10.1016/j.jbusres.2019.09.022
+[10] D.J. Teece, Explicating dynamic capabilities: the nature and microfoundations of (sustainable) enterprise performance, Strateg. Manag. J. 28 (13) (2007) 1319–1350. https://doi.org/10.1002/smj.640
 
-Vial, G. (2019). Understanding digital transformation: A review and a research agenda. *The Journal of Strategic Information Systems, 28*(2), 118–144. https://doi.org/10.1016/j.jsis.2019.01.003
+[11] R. Liang, Y. Li, How digital transformation affects exploitative and exploratory innovation: an innovation structure perspective, IEEE Trans. Eng. Manag. 71 (2024) 10912–10923. https://doi.org/10.1109/TEM.2024.3408322
+
+[12] P. Mikalef, M. Gupta, Artificial intelligence capability: conceptualization, measurement calibration, and empirical study on its impact on organizational creativity and firm performance, Inf. Manag. 58 (3) (2021) 103434. https://doi.org/10.1016/j.im.2021.103434
+
+[13] K.S.R. Warner, M. Wäger, Building dynamic capabilities for digital transformation: an ongoing process of strategic renewal, Long Range Plan. 52 (3) (2019) 326–349. https://doi.org/10.1016/j.lrp.2018.12.001
+
+[14] J.B. Yang, J. Liu, J. Wang, H.S. Sii, H.W. Wang, Belief rule-base inference methodology using the evidential reasoning approach (RIMER), IEEE Trans. Syst. Man Cybern. A Syst. Hum. 36 (2) (2006) 266–285. https://doi.org/10.1109/TSMCA.2005.851270
+
+[15] S.F. Nimmy, O.K. Hussain, R.K. Chakrabortty, F.K. Hussain, M. Saberi, An optimized belief-rule-based (BRB) approach to ensure the trustworthiness of interpreted time-series decisions, Knowl.-Based Syst. 271 (2023) 110552. https://doi.org/10.1016/j.knosys.2023.110552
+
+[16] Y. Elgargouh, M.R. Chbihi Louhdi, E.M. Zemmouri, H. Behja, Knowledge management for improved digital transformation in insurance companies: systematic review and perspectives, Informatics 11 (3) (2024) 60. https://doi.org/10.3390/informatics11030060
+
+[17] J.H. Friedman, Greedy function approximation: a gradient boosting machine, Ann. Stat. 29 (5) (2001) 1189–1232. https://doi.org/10.1214/aos/1013203451
+
+[18] F. Pedregosa, G. Varoquaux, A. Gramfort, V. Michel, B. Thirion, O. Grisel, M. Blondel, P. Prettenhofer, R. Weiss, V. Dubourg, J. Vanderplas, A. Passos, D. Cournapeau, M. Brucher, M. Perrot, É. Duchesnay, Scikit-learn: machine learning in Python, J. Mach. Learn. Res. 12 (2011) 2825–2830. https://www.jmlr.org/papers/v12/pedregosa11a.html
+
+[19] D.R. Palagiri, KAID digital-transformation readiness model, version 2026, GitHub. https://github.com/durgarao-dev/kb-ai-dt-readiness, 2026 (accessed 24 October 2026).

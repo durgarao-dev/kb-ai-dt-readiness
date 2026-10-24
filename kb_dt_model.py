@@ -1,11 +1,9 @@
-"""Knowledge-based AI decision support for digital transformation readiness.
+"""KAID: knowledge-guided investment decision for digital-transformation readiness.
 
-Reproducible validation for the short communication in PAPER.md.
-Enterprises are simulated from a fully disclosed process. Re-run:
+Reproducible short-communication experiment. One command rewrites the figures
+and results.json that PAPER.md reports:
 
     python kb_dt_model.py
-
-The command rewrites fig1_architecture.png, fig2_performance.png, and results.json.
 """
 
 from __future__ import annotations
@@ -19,30 +17,21 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.patches import FancyArrowPatch, FancyBboxPatch
-from sklearn.ensemble import HistGradientBoostingClassifier
-from sklearn.inspection import permutation_importance
-from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import (
-    average_precision_score,
-    balanced_accuracy_score,
-    brier_score_loss,
-    roc_auc_score,
-    roc_curve,
-)
-from sklearn.model_selection import StratifiedKFold
-from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import StandardScaler
+from scipy.stats import binomtest, wilcoxon
+from sklearn.ensemble import HistGradientBoostingRegressor
+from sklearn.linear_model import LinearRegression
+from sklearn.model_selection import KFold
 
 SEED = 20261024
-N_ENTERPRISES = 2000
+N_ENTERPRISES = 360
 N_FOLDS = 5
-N_BOOT = 2000
-BENCHMARK = 0.60
-TARGET_PREVALENCE = 0.40
-INDICATOR_NOISE = 0.12
-# Noise on the readiness index. Small enough that readiness is learnable,
-# large enough that the label is not a deterministic function of knowledge.
-INDEX_NOISE = 0.18
+N_BOOT = 4000
+DELTA = 0.15
+SENSITIVITY = (0.10, 0.15, 0.20)
+INDICATOR_NOISE = 0.14
+AUDIT_NOISE = 0.10
+PAIR_MAIN = 4.0
+PAIR_SECOND = 0.9
 
 ASSETS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("Know-how", ("Training intensity", "Process innovation", "R&D intensity")),
@@ -50,8 +39,21 @@ ASSETS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("Know-what", ("Product innovation", "Innovation sales share")),
     ("Know-why", ("Scientific sourcing", "Research-project share")),
 )
-DISTRACTORS = ("Plant age", "Fleet size", "Unrelated certifications")
 ASSET_NAMES = [name for name, _ in ASSETS]
+DISTRACTORS = (
+    "Plant age",
+    "Fleet size",
+    "Unrelated certifications",
+    "Office count",
+    "Vehicle age",
+    "Storage area",
+)
+METHOD_ORDER = (
+    "Lowest score",
+    "Raw gradient boosting",
+    "Equal-weight knowledge rules",
+    "KAID",
+)
 
 
 @dataclass(frozen=True)
@@ -60,39 +62,17 @@ class Population:
     distractors: np.ndarray
     scores: np.ndarray
     latents: np.ndarray
-    ready: np.ndarray
+    audit: np.ndarray
     asset_slices: tuple[slice, ...]
 
 
 def readiness_index(latents: np.ndarray) -> np.ndarray:
-    """Readiness from two complementary pairs, not from a sum of assets.
-
-    Know-how creates readiness only together with know-who, and know-what only
-    together with know-why. A linear score cannot represent that pattern.
-    """
+    """Two complementary pairs. The first pair is weighted more heavily."""
     how, who, what, why = (latents[:, i] for i in range(4))
-    return 2.40 * how * who + 1.60 * what * why
-
-
-def _threshold_for_share(observed: np.ndarray, target: float) -> float:
-    lo, hi = float(observed.min()), float(observed.max())
-    for _ in range(60):
-        mid = (lo + hi) / 2.0
-        share_ready = float((observed > mid).mean())
-        if share_ready > target:
-            lo = mid
-        else:
-            hi = mid
-    return (lo + hi) / 2.0
+    return PAIR_MAIN * how * who + PAIR_SECOND * what * why
 
 
 def simulate(rng: np.random.Generator) -> Population:
-    """Draw enterprises, noisy innovation indicators, and a readiness label.
-
-    Each knowledge latent is shared by its indicators. Three distractors are
-    independent of readiness, so a model that uses every raw column can chase
-    them. The label is a noisy threshold on the complementary readiness index.
-    """
     latents = rng.beta(2.0, 2.0, size=(N_ENTERPRISES, 4))
     columns: list[np.ndarray] = []
     slices: list[slice] = []
@@ -100,320 +80,361 @@ def simulate(rng: np.random.Generator) -> Population:
     for asset_i, (_, items) in enumerate(ASSETS):
         start = cursor
         for _ in items:
-            observed = latents[:, asset_i] + rng.normal(0.0, INDICATOR_NOISE, N_ENTERPRISES)
-            columns.append(np.clip(observed, 0.0, 1.0))
+            noisy = latents[:, asset_i] + rng.normal(0.0, INDICATOR_NOISE, N_ENTERPRISES)
+            columns.append(np.clip(noisy, 0.0, 1.0))
             cursor += 1
         slices.append(slice(start, cursor))
-
     indicators = np.column_stack(columns)
     scores = np.column_stack([indicators[:, sl].mean(axis=1) for sl in slices])
     distractors = rng.beta(2.0, 2.0, size=(N_ENTERPRISES, len(DISTRACTORS)))
-
-    index = readiness_index(latents)
-    observed = index + rng.normal(0.0, INDEX_NOISE, N_ENTERPRISES)
-    threshold = _threshold_for_share(observed, TARGET_PREVALENCE)
-    ready = (observed > threshold).astype(int)
-    return Population(indicators, distractors, scores, latents, ready, tuple(slices))
+    audit = readiness_index(latents) + rng.normal(0.0, AUDIT_NOISE, N_ENTERPRISES)
+    return Population(indicators, distractors, scores, latents, audit, tuple(slices))
 
 
-def cronbach_alpha(items: np.ndarray) -> float:
-    item_count = items.shape[1]
-    item_variance = items.var(axis=0, ddof=1).sum()
-    total_variance = items.sum(axis=1).var(ddof=1)
-    return float((item_count / (item_count - 1.0)) * (1.0 - item_variance / total_variance))
-
-
-def make_boosting() -> HistGradientBoostingClassifier:
-    return HistGradientBoostingClassifier(
+def make_boosting() -> HistGradientBoostingRegressor:
+    return HistGradientBoostingRegressor(
         max_depth=3,
         learning_rate=0.06,
         max_iter=300,
-        min_samples_leaf=20,
+        min_samples_leaf=12,
         l2_regularization=0.1,
         early_stopping=False,
         random_state=SEED,
     )
 
 
-def make_logistic() -> Pipeline:
-    return Pipeline(
-        [
-            ("scale", StandardScaler()),
-            ("clf", LogisticRegression(C=1.0, max_iter=2000, random_state=SEED)),
-        ]
-    )
+def pair_features(scores: np.ndarray) -> np.ndarray:
+    return np.column_stack([scores[:, 0] * scores[:, 1], scores[:, 2] * scores[:, 3]])
 
 
-def expected_calibration_error(y_true: np.ndarray, probability: np.ndarray, n_bins: int = 10) -> float:
-    edges = np.linspace(0.0, 1.0, n_bins + 1)
-    error = 0.0
-    for i in range(n_bins):
-        if i < n_bins - 1:
-            mask = (probability >= edges[i]) & (probability < edges[i + 1])
-        else:
-            mask = (probability >= edges[i]) & (probability <= edges[i + 1])
-        if not np.any(mask):
-            continue
-        error += mask.mean() * abs(y_true[mask].mean() - probability[mask].mean())
-    return float(error)
+def oof_kaid(scores: np.ndarray, audit: np.ndarray, delta: float) -> tuple[np.ndarray, np.ndarray]:
+    """Learn only the two knowledge-pair weights, then fund the best one-asset move."""
+    features = pair_features(scores)
+    choice = np.zeros(len(audit), dtype=int)
+    predicted = np.zeros(len(audit), dtype=float)
+    folds = KFold(n_splits=N_FOLDS, shuffle=True, random_state=SEED)
+    for train_idx, test_idx in folds.split(features):
+        model = LinearRegression()
+        model.fit(features[train_idx], audit[train_idx])
+        held = scores[test_idx]
+        baseline = model.predict(pair_features(held))
+        predicted[test_idx] = baseline
+        lifts = np.zeros((len(test_idx), 4))
+        for asset_i in range(4):
+            funded = held.copy()
+            funded[:, asset_i] = np.minimum(1.0, funded[:, asset_i] + delta)
+            lifts[:, asset_i] = model.predict(pair_features(funded)) - baseline
+        choice[test_idx] = lifts.argmax(axis=1)
+    return choice, predicted
 
 
-def classification_metrics(y_true: np.ndarray, probability: np.ndarray) -> dict[str, float]:
-    predicted = (probability >= 0.5).astype(int)
-    return {
-        "roc_auc": float(roc_auc_score(y_true, probability)),
-        "average_precision": float(average_precision_score(y_true, probability)),
-        "brier": float(brier_score_loss(y_true, probability)),
-        "ece": expected_calibration_error(y_true, probability),
-        "balanced_accuracy": float(balanced_accuracy_score(y_true, predicted)),
-    }
+def oof_action(
+    features: np.ndarray,
+    audit: np.ndarray,
+    groups: tuple[np.ndarray, ...],
+    delta: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Fit out of fold and choose the asset whose funded increase most raises the audit prediction."""
+    choice = np.zeros(len(audit), dtype=int)
+    predicted = np.zeros(len(audit), dtype=float)
+    folds = KFold(n_splits=N_FOLDS, shuffle=True, random_state=SEED)
+    for train_idx, test_idx in folds.split(features):
+        model = make_boosting()
+        model.fit(features[train_idx], audit[train_idx])
+        held = features[test_idx]
+        baseline = model.predict(held)
+        predicted[test_idx] = baseline
+        lifts = np.zeros((len(test_idx), len(groups)))
+        for asset_i, columns in enumerate(groups):
+            funded = held.copy()
+            funded[:, columns] = np.minimum(1.0, funded[:, columns] + delta)
+            lifts[:, asset_i] = model.predict(funded) - baseline
+        choice[test_idx] = lifts.argmax(axis=1)
+    return choice, predicted
 
 
-def oof_probability(builder, features: np.ndarray, y_true: np.ndarray) -> np.ndarray:
-    probability = np.zeros(len(y_true), dtype=float)
-    folds = StratifiedKFold(n_splits=N_FOLDS, shuffle=True, random_state=SEED)
-    for train_idx, test_idx in folds.split(features, y_true):
-        model = builder()
-        model.fit(features[train_idx], y_true[train_idx])
-        probability[test_idx] = model.predict_proba(features[test_idx])[:, 1]
-    return probability
-
-
-def counterfactual_lifts(model, scores: np.ndarray, benchmark: float = BENCHMARK) -> np.ndarray:
-    """Increase in predicted readiness if each knowledge asset is raised to the bar."""
-    baseline = model.predict_proba(scores)[:, 1]
+def rule_action(scores: np.ndarray, delta: float) -> np.ndarray:
+    """Equal-weight pair rules. Coefficients of the two products are not used."""
+    base = scores[:, 0] * scores[:, 1] + scores[:, 2] * scores[:, 3]
     lifts = np.zeros_like(scores)
-    for asset_i in range(scores.shape[1]):
-        intervened = scores.copy()
-        intervened[:, asset_i] = np.maximum(intervened[:, asset_i], benchmark)
-        lifts[:, asset_i] = model.predict_proba(intervened)[:, 1] - baseline
+    for asset_i in range(4):
+        funded = scores.copy()
+        funded[:, asset_i] = np.minimum(1.0, funded[:, asset_i] + delta)
+        lifts[:, asset_i] = (
+            funded[:, 0] * funded[:, 1] + funded[:, 2] * funded[:, 3] - base
+        )
+    return lifts.argmax(axis=1)
+
+
+def true_lifts(latents: np.ndarray, delta: float) -> np.ndarray:
+    base = readiness_index(latents)
+    lifts = np.zeros_like(latents)
+    for asset_i in range(4):
+        funded = latents.copy()
+        funded[:, asset_i] = np.minimum(1.0, funded[:, asset_i] + delta)
+        lifts[:, asset_i] = readiness_index(funded) - base
     return lifts
 
 
-def oracle_binding_asset(latents: np.ndarray, benchmark: float = BENCHMARK) -> np.ndarray:
-    """Asset whose lift to the knowledge bar most increases the true readiness index."""
-    baseline = readiness_index(latents)
-    gains = np.zeros_like(latents)
-    for asset_i in range(latents.shape[1]):
-        intervened = latents.copy()
-        intervened[:, asset_i] = np.maximum(intervened[:, asset_i], benchmark)
-        gains[:, asset_i] = readiness_index(intervened) - baseline
-    return gains.argmax(axis=1)
-
-
-def kaid_decisions(scores: np.ndarray, y_true: np.ndarray) -> dict[str, np.ndarray]:
-    """Out-of-fold actions from three rules, plus fold-averaged asset importance."""
-    n_obs, n_assets = scores.shape
-    kaid_choice = np.zeros(n_obs, dtype=int)
-    gap_choice = np.zeros(n_obs, dtype=int)
-    importance_choice = np.zeros(n_obs, dtype=int)
-    importance_sum = np.zeros(n_assets, dtype=float)
-    folds = StratifiedKFold(n_splits=N_FOLDS, shuffle=True, random_state=SEED)
-
-    for fold_id, (train_idx, test_idx) in enumerate(folds.split(scores, y_true)):
-        model = make_boosting()
-        model.fit(scores[train_idx], y_true[train_idx])
-        kaid_choice[test_idx] = counterfactual_lifts(model, scores[test_idx]).argmax(axis=1)
-
-        gap = np.maximum(0.0, BENCHMARK - scores[test_idx])
-        gap_choice[test_idx] = gap.argmax(axis=1)
-
-        importance = permutation_importance(
-            model,
-            scores[train_idx],
-            y_true[train_idx],
-            n_repeats=15,
-            scoring="roc_auc",
-            n_jobs=1,
-            random_state=SEED + fold_id,
-        )
-        weights = np.maximum(importance.importances_mean, 0.0)
-        importance_sum += weights
-        importance_choice[test_idx] = int(weights.argmax())
-
-    return {
-        "kaid": kaid_choice,
-        "equal_weight_gap": gap_choice,
-        "importance_only": importance_choice,
-        "importance_mean": importance_sum / N_FOLDS,
-    }
-
-
-def evaluation_mask(latents: np.ndarray, y_true: np.ndarray) -> np.ndarray:
-    """Not-ready enterprises that are still short of the bar on at least one asset."""
-    below_bar = (latents < BENCHMARK).any(axis=1)
-    return (y_true == 0) & below_bar
-
-
-def hit_rate(choice: np.ndarray, oracle: np.ndarray, mask: np.ndarray) -> float:
-    return float((choice[mask] == oracle[mask]).mean())
-
-
-def bootstrap_metric_cis(
-    y_true: np.ndarray,
-    probabilities: dict[str, np.ndarray],
-    hits: dict[str, np.ndarray],
-    rng: np.random.Generator,
-) -> dict[str, dict]:
-    """Percentile intervals that treat out-of-fold scores as fixed."""
-    n_obs = len(y_true)
-    auc_draws = {name: [] for name in probabilities}
-    raw_diff_draws = []
-    knowledge_diff_draws = []
-    rule_names = [name for name in hits if name not in {"mask", "oracle"}]
-    hit_draws = {name: [] for name in rule_names}
-    hit_index = np.flatnonzero(hits["mask"])
-
-    for _ in range(N_BOOT):
-        sample = rng.integers(0, n_obs, n_obs)
-        if len(np.unique(y_true[sample])) < 2:
-            continue
-        fold_auc = {}
-        for name, probability in probabilities.items():
-            fold_auc[name] = roc_auc_score(y_true[sample], probability[sample])
-            auc_draws[name].append(fold_auc[name])
-        raw_diff_draws.append(fold_auc["KAID"] - fold_auc["Raw gradient boosting"])
-        knowledge_diff_draws.append(fold_auc["KAID"] - fold_auc["Knowledge logistic"])
-
-        hit_sample = rng.choice(hit_index, size=len(hit_index), replace=True)
-        for name in rule_names:
-            matched = hits[name][hit_sample] == hits["oracle"][hit_sample]
-            hit_draws[name].append(float(matched.mean()))
-
-    def _ci(values: list[float]) -> list[float]:
-        array = np.asarray(values, dtype=float)
-        return [float(np.quantile(array, 0.025)), float(np.quantile(array, 0.975))]
-
-    return {
-        "auc": {name: _ci(values) for name, values in auc_draws.items()},
-        "kaid_minus_raw_boosting": _ci(raw_diff_draws),
-        "kaid_minus_knowledge_logistic": _ci(knowledge_diff_draws),
-        "hit_rate": {name: _ci(values) for name, values in hit_draws.items()},
-    }
-
-
-def _box(ax, x, y, w, h, face, title, lines, title_size=9.5, body_size=8.0) -> None:
-    patch = FancyBboxPatch(
-        (x, y),
-        w,
-        h,
-        boxstyle="round,pad=0.012,rounding_size=0.08",
-        facecolor=face,
-        edgecolor="#1F3A5F",
-        linewidth=1.1,
-        mutation_aspect=0.6,
+def realized_lift(latents: np.ndarray, choice: np.ndarray, delta: float) -> np.ndarray:
+    funded = latents.copy()
+    funded[np.arange(len(choice)), choice] = np.minimum(
+        1.0, funded[np.arange(len(choice)), choice] + delta
     )
-    ax.add_patch(patch)
-    ax.text(x + w / 2, y + h - 0.28, title, ha="center", va="top", fontsize=title_size, fontweight="bold", color="#1F3A5F")
-    ax.text(x + w / 2, y + h / 2 - 0.08, lines, ha="center", va="center", fontsize=body_size, color="#243447", linespacing=1.35)
+    return readiness_index(funded) - readiness_index(latents)
 
 
-def _arrow(ax, start, end) -> None:
+def mean_interval(values: np.ndarray, rng: np.random.Generator) -> tuple[float, list[float]]:
+    draws = rng.integers(0, len(values), size=(N_BOOT, len(values)))
+    means = values[draws].mean(axis=1)
+    return float(values.mean()), [float(np.quantile(means, 0.025)), float(np.quantile(means, 0.975))]
+
+
+def paired_diff_interval(proposed: np.ndarray, baseline: np.ndarray, rng: np.random.Generator) -> list[float]:
+    difference = proposed - baseline
+    draws = rng.integers(0, len(difference), size=(N_BOOT, len(difference)))
+    means = difference[draws].mean(axis=1)
+    return [float(np.quantile(means, 0.025)), float(np.quantile(means, 0.975))]
+
+
+def wilcoxon_p(proposed: np.ndarray, baseline: np.ndarray) -> float:
+    difference = proposed - baseline
+    if np.allclose(difference, 0.0):
+        return 1.0
+    return float(wilcoxon(difference, alternative="two-sided", zero_method="wilcox").pvalue)
+
+
+def mcnemar_p(proposed_hit: np.ndarray, baseline_hit: np.ndarray) -> float:
+    proposed_only = int(np.sum(proposed_hit & ~baseline_hit))
+    baseline_only = int(np.sum(~proposed_hit & baseline_hit))
+    discordant = proposed_only + baseline_only
+    if discordant == 0:
+        return 1.0
+    return float(binomtest(proposed_only, discordant, 0.5, alternative="two-sided").pvalue)
+
+
+def holm(p_values: list[float]) -> list[float]:
+    order = np.argsort(p_values)
+    adjusted = np.empty(len(p_values), dtype=float)
+    running = 0.0
+    count = len(p_values)
+    for rank, index in enumerate(order):
+        corrected = min(1.0, (count - rank) * p_values[index])
+        running = max(running, corrected)
+        adjusted[index] = running
+    return [float(value) for value in adjusted]
+
+
+def select_case(
+    lifts: dict[str, np.ndarray],
+    choices: dict[str, np.ndarray],
+    oracle: np.ndarray,
+) -> int:
+    """Median KAID gain among enterprises named by KAID and missed by both baselines."""
+    advantage = lifts["KAID"] - lifts["Raw gradient boosting"]
+    mask = (
+        (choices["KAID"] == oracle)
+        & (choices["Raw gradient boosting"] != oracle)
+        & (choices["Equal-weight knowledge rules"] != oracle)
+    )
+    if not np.any(mask):
+        mask = (choices["KAID"] == oracle) & (choices["Equal-weight knowledge rules"] != oracle)
+    candidates = np.flatnonzero(mask)
+    if len(candidates) == 0:
+        return int(np.argsort(lifts["KAID"])[len(lifts["KAID"]) // 2])
+    median_advantage = np.median(advantage[candidates])
+    return int(candidates[np.argmin(np.abs(advantage[candidates] - median_advantage))])
+
+
+def _panel(ax, x, y, w, h, face, title, body) -> None:
     ax.add_patch(
-        FancyArrowPatch(
-            start,
-            end,
-            arrowstyle="-|>",
-            mutation_scale=14,
-            linewidth=1.4,
-            color="#1F3A5F",
-            shrinkA=0,
-            shrinkB=0,
+        FancyBboxPatch(
+            (x, y),
+            w,
+            h,
+            boxstyle="round,pad=0.008,rounding_size=0.04",
+            facecolor=face,
+            edgecolor="#1C2B39",
+            linewidth=0.8,
         )
     )
+    ax.text(x + 0.12, y + h - 0.22, title, ha="left", va="top", fontsize=8.5, fontweight="bold", color="#1C2B39", fontfamily="serif")
+    ax.text(x + 0.12, y + h - 0.52, body, ha="left", va="top", fontsize=7.4, color="#243444", fontfamily="serif", linespacing=1.38)
 
 
-def plot_architecture(path: str) -> None:
-    fig, ax = plt.subplots(figsize=(11.2, 4.8))
-    ax.set_xlim(0, 12)
-    ax.set_ylim(0, 5.2)
-    ax.axis("off")
+def plot_framework(path: str) -> None:
+    plt.rcParams.update({"font.family": "serif", "font.size": 8, "mathtext.fontset": "dejavuserif"})
+    fig, ax = plt.subplots(figsize=(7.60, 3.25))
     fig.patch.set_facecolor("white")
-
-    _box(
-        ax, 0.35, 1.15, 3.15, 3.15, "#E8F1FA", "1  ·  Innovation data",
-        "Enterprise innovation indicators\n"
-        "grouped into four knowledge assets\n\n"
-        "Know-how     Know-who\n"
-        "Know-what    Know-why\n\n"
-        "Asset score = mean of its indicators",
+    ax.set_xlim(0, 10.05)
+    ax.set_ylim(0, 3.55)
+    ax.axis("off")
+    _panel(
+        ax, 0.12, 0.48, 2.95, 2.85, "#F4F7FB",
+        "(a)  Knowledge layer",
+        "Ten indicators become\n"
+        "four observed scores.\n\n"
+        r"$P_1$ = know-how $\times$ know-who" + "\n"
+        r"$P_2$ = know-what $\times$ know-why" + "\n\n"
+        "Six distractors are\n"
+        "excluded from both products.",
     )
-    _box(
-        ax, 4.45, 1.15, 3.15, 3.15, "#FFF4E0", "2  ·  AI predictor",
-        "Gradient boosting on the four\n"
-        "knowledge scores only\n\n"
-        "Out-of-fold probability that the\n"
-        "enterprise is ready for digital\n"
-        "transformation",
+    _panel(
+        ax, 3.55, 0.48, 2.95, 2.85, "#FBF6EE",
+        "(b)  Audit model",
+        "Out-of-fold least squares\n"
+        r"$\hat{A} = \hat{c} + \hat{a}P_1 + \hat{b}P_2$" + "\n\n"
+        r"$\hat{a}$ and $\hat{b}$ are the" + "\n"
+        "learned pair weights.\n\n"
+        "Raw indicators do not\n"
+        "enter the regression.",
     )
-    _box(
-        ax, 8.55, 1.15, 3.15, 3.15, "#E7F5EF", "3  ·  Decision rule",
-        "Raise one asset to the 0.60 bar\n"
-        "and recompute the probability\n\n"
-        "Recommend the asset with the\n"
-        "largest readiness lift\n\n"
-        "Bands: lagging · emerging · ready",
+    _panel(
+        ax, 6.98, 0.48, 2.95, 2.85, "#F3F8F4",
+        "(c)  One-asset investment",
+        "Raise one score by 0.15\n"
+        "and cap it at 1.\n\n"
+        "Fund the asset with the\n"
+        "largest predicted gain.\n\n"
+        "The output is the name\n"
+        "of that single asset.",
     )
-    _arrow(ax, (3.55, 2.72), (4.40, 2.72))
-    _arrow(ax, (7.65, 2.72), (8.50, 2.72))
+    for start, end in ((3.09, 3.52), (6.52, 6.95)):
+        ax.add_patch(
+            FancyArrowPatch(
+                (start, 1.90),
+                (end, 1.90),
+                arrowstyle="-|>",
+                mutation_scale=11,
+                linewidth=0.9,
+                color="#1C2B39",
+            )
+        )
     ax.text(
-        6.0, 0.48,
-        "Distractor indicators are kept in the raw-data baselines and excluded from the knowledge model.",
-        ha="center", va="center", fontsize=8.0, color="#526173",
+        5.02, 0.18,
+        "The funded asset is scored by the increase in the true readiness index R.",
+        ha="center", va="center", fontsize=7.2, color="#5C6B7A", fontfamily="serif",
     )
-    ax.set_title(
-        "Knowledge-based AI decision-support model",
-        loc="left", fontsize=13, color="#1F3A5F", fontweight="bold", pad=8,
-    )
-    fig.tight_layout()
-    fig.savefig(path, dpi=300, bbox_inches="tight", facecolor="white")
+    fig.subplots_adjust(left=0.015, right=0.985, bottom=0.04, top=0.98)
+    fig.savefig(path, dpi=300, facecolor="white")
     plt.close(fig)
 
 
-def plot_performance(path: str, y_true: np.ndarray, probabilities: dict[str, np.ndarray], decision_rows: list[dict]) -> None:
-    fig, axes = plt.subplots(1, 2, figsize=(11.0, 4.5))
+def plot_results(
+    path: str,
+    summary: list[dict],
+    ceiling: float,
+    case: dict,
+) -> None:
+    plt.rcParams.update({"font.family": "serif", "font.size": 8, "axes.linewidth": 0.6})
+    fig, axes = plt.subplots(
+        1, 2, figsize=(7.48, 3.55), gridspec_kw={"width_ratios": [1.02, 1.18]}
+    )
     fig.patch.set_facecolor("white")
     colors = {
-        "KAID": "#0072B2",
-        "Knowledge logistic": "#009E73",
+        "Lowest score": "#7A7A7A",
         "Raw gradient boosting": "#E69F00",
-        "Raw logistic": "#CC79A7",
+        "Equal-weight knowledge rules": "#009E73",
+        "KAID": "#0072B2",
     }
+    short = {
+        "Lowest score": "Lowest score",
+        "Raw gradient boosting": "Raw boosting",
+        "Equal-weight knowledge rules": "Equal-weight rules",
+        "KAID": "KAID",
+    }
+
     ax = axes[0]
-    for name, probability in probabilities.items():
-        fpr, tpr, _ = roc_curve(y_true, probability)
-        auc = roc_auc_score(y_true, probability)
-        ax.plot(fpr, tpr, color=colors[name], lw=2.0, label=f"{name}  {auc:.3f}")
-    ax.plot([0, 1], [0, 1], color="#9AA7B2", lw=1.0, ls="--")
-    ax.set_xlim(0, 1)
-    ax.set_ylim(0, 1.02)
-    ax.set_xlabel("False positive rate")
-    ax.set_ylabel("True positive rate")
-    ax.set_title("a   Out-of-fold discrimination", loc="left", fontsize=11, color="#1F3A5F")
-    ax.legend(frameon=False, fontsize=8.0, loc="lower right")
+    labels = [row["method"] for row in summary]
+    means = [row["mean_lift"] for row in summary]
+    lows = [row["mean_lift"] - row["lift_ci"][0] for row in summary]
+    highs = [row["lift_ci"][1] - row["mean_lift"] for row in summary]
+    y_pos = np.arange(len(labels))[::-1]
+    ax.barh(
+        y_pos,
+        means,
+        color=[colors[name] for name in labels],
+        height=0.62,
+        xerr=[lows, highs],
+        capsize=2.5,
+        ecolor="#1C2B39",
+        error_kw={"linewidth": 0.7},
+    )
+    ax.axvline(ceiling, color="#4C4C4C", ls="--", lw=0.8)
+    ax.set_yticks(y_pos)
+    ax.set_yticklabels(labels)
+    ax.set_xlabel("Mean true readiness lift")
+    ax.set_title("(a)", loc="left", fontsize=9, color="#1C2B39", pad=4)
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
+    ax.set_xlim(0, 0.49)
+    ax.set_xticks([0, 0.1, 0.2, 0.3, 0.4])
+    ax.set_ylim(-0.55, 4.35)
+    ax.text(
+        ceiling - 0.012,
+        3.72,
+        f"Best attainable\n{ceiling:.3f}",
+        ha="right",
+        va="bottom",
+        fontsize=6.4,
+        color="#333333",
+        linespacing=1.15,
+    )
 
     ax = axes[1]
-    names = [row["label"] for row in decision_rows]
-    rates = [row["rate"] for row in decision_rows]
-    lows = [row["rate"] - row["ci"][0] for row in decision_rows]
-    highs = [row["ci"][1] - row["rate"] for row in decision_rows]
-    y_pos = np.arange(len(names))[::-1]
-    bar_colors = ["#0072B2", "#009E73", "#E69F00"]
-    ax.barh(y_pos, rates, color=bar_colors, height=0.62, xerr=[lows, highs], capsize=3, ecolor="#1F3A5F")
-    ax.axvline(0.25, color="#9AA7B2", ls="--", lw=1.0, label="Chance (1/4)")
+    observed = np.asarray(case["observed"], dtype=float)
+    latent = np.asarray(case["latent"], dtype=float)
+    y_pos = np.arange(4)
+    ax.hlines(y_pos, 0, observed, color="#D5DCE3", lw=4, zorder=1)
+    ax.scatter(observed, y_pos, s=28, color="#0072B2", zorder=3, label="Observed score")
+    ax.scatter(
+        latent, y_pos, s=26, facecolors="none", edgecolors="#1C2B39",
+        linewidths=0.9, zorder=3, label="True latent",
+    )
+    ax.axvline(1.0, color="#E2E6EA", lw=0.6, zorder=0)
+    markers = {
+        "KAID": "D",
+        "Equal-weight knowledge rules": "s",
+        "Raw gradient boosting": "^",
+        "Lowest score": "o",
+    }
+    margin_x = {
+        "Lowest score": 1.10,
+        "Raw gradient boosting": 1.20,
+        "Equal-weight knowledge rules": 1.30,
+        "KAID": 1.40,
+    }
+    for method in METHOD_ORDER:
+        asset_i = case["choices"][method]
+        ax.scatter(
+            margin_x[method],
+            asset_i,
+            marker=markers[method],
+            s=32,
+            color=colors[method],
+            zorder=4,
+            label=f"{short[method]}: {ASSET_NAMES[asset_i]}",
+        )
     ax.set_yticks(y_pos)
-    ax.set_yticklabels(names, fontsize=8.5)
-    ax.set_xlim(0, 1.0)
-    ax.set_xlabel("Hit rate on the binding knowledge asset")
-    ax.set_title("b   Decision-rule recovery", loc="left", fontsize=11, color="#1F3A5F")
-    ax.legend(frameon=False, fontsize=8.0, loc="lower right")
+    ax.set_yticklabels(ASSET_NAMES)
+    ax.set_xlim(-0.02, 1.52)
+    ax.set_ylim(-0.55, 3.85)
+    ax.set_xticks([0, 0.25, 0.5, 0.75, 1.0])
+    ax.set_xlabel("Asset level")
+    ax.set_title(f"(b)   Enterprise {case['id']}", loc="left", fontsize=9, color="#1C2B39", pad=4)
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
+    ax.text(1.25, 3.62, "Funded by", ha="center", va="center", fontsize=6.5, color="#5C6B7A")
+    ax.legend(
+        frameon=False,
+        fontsize=6.2,
+        loc="upper center",
+        bbox_to_anchor=(0.42, -0.18),
+        ncol=2,
+    )
 
     fig.tight_layout()
-    fig.savefig(path, dpi=300, bbox_inches="tight", facecolor="white")
+    fig.savefig(path, dpi=300, bbox_inches="tight", facecolor="white", pad_inches=0.08)
     plt.close(fig)
 
 
@@ -425,92 +446,123 @@ def run() -> dict:
     rng = np.random.default_rng(SEED)
     population = simulate(rng)
     raw = np.column_stack([population.indicators, population.distractors])
-    y_true = population.ready
+    knowledge_groups = tuple(np.array([i]) for i in range(4))
+    raw_groups = tuple(np.arange(sl.start, sl.stop) for sl in population.asset_slices)
+    oracle_lifts = true_lifts(population.latents, DELTA)
+    oracle = oracle_lifts.argmax(axis=1)
+    ceiling = float(oracle_lifts.max(axis=1).mean())
 
-    probabilities = {
-        "KAID": oof_probability(make_boosting, population.scores, y_true),
-        "Knowledge logistic": oof_probability(make_logistic, population.scores, y_true),
-        "Raw gradient boosting": oof_probability(make_boosting, raw, y_true),
-        "Raw logistic": oof_probability(make_logistic, raw, y_true),
+    kaid_choice, kaid_pred = oof_kaid(population.scores, population.audit, DELTA)
+    raw_choice, raw_pred = oof_action(raw, population.audit, raw_groups, DELTA)
+    del knowledge_groups
+    choices = {
+        "Lowest score": population.scores.argmin(axis=1),
+        "Raw gradient boosting": raw_choice,
+        "Equal-weight knowledge rules": rule_action(population.scores, DELTA),
+        "KAID": kaid_choice,
     }
-    metrics = {name: classification_metrics(y_true, probability) for name, probability in probabilities.items()}
-
-    decisions = kaid_decisions(population.scores, y_true)
-    oracle = oracle_binding_asset(population.latents)
-    mask = evaluation_mask(population.latents, y_true)
-    hit_values = {
-        "mask": mask,
-        "oracle": oracle,
-        "KAID counterfactual": decisions["kaid"],
-        "Equal-weight gap": decisions["equal_weight_gap"],
-        "Importance only": decisions["importance_only"],
+    lifts = {
+        name: realized_lift(population.latents, choice, DELTA) for name, choice in choices.items()
     }
-    rates = {name: hit_rate(choice, oracle, mask) for name, choice in hit_values.items() if name not in {"mask", "oracle"}}
+    hits = {name: choices[name] == oracle for name in METHOD_ORDER}
 
-    cis = bootstrap_metric_cis(y_true, probabilities, hit_values, rng)
-    alphas = {
-        name: cronbach_alpha(population.indicators[:, sl])
-        for (name, _), sl in zip(ASSETS, population.asset_slices)
+    summary = []
+    for name in METHOD_ORDER:
+        mean_lift, interval = mean_interval(lifts[name], rng)
+        summary.append(
+            {
+                "method": name,
+                "hit_rate": _round(float(hits[name].mean())),
+                "mean_lift": _round(mean_lift),
+                "lift_ci": [_round(interval[0]), _round(interval[1])],
+            }
+        )
+
+    comparisons = []
+    raw_p = []
+    for name in METHOD_ORDER[:-1]:
+        raw_p.append(wilcoxon_p(lifts["KAID"], lifts[name]))
+    adjusted = holm(raw_p)
+    for name, p_value, holm_p in zip(METHOD_ORDER[:-1], raw_p, adjusted):
+        difference = float((lifts["KAID"] - lifts[name]).mean())
+        comparisons.append(
+            {
+                "comparison": f"KAID vs {name}",
+                "kaid_mean_lift": _round(float(lifts["KAID"].mean())),
+                "baseline_mean_lift": _round(float(lifts[name].mean())),
+                "mean_difference": _round(difference),
+                "difference_ci": [_round(v) for v in paired_diff_interval(lifts["KAID"], lifts[name], rng)],
+                "wilcoxon_p": p_value,
+                "holm_p": holm_p,
+                "hit_rate_difference": _round(float(hits["KAID"].mean() - hits[name].mean())),
+                "mcnemar_p": mcnemar_p(hits["KAID"], hits[name]),
+            }
+        )
+
+    sensitivity = []
+    for delta in SENSITIVITY:
+        if delta == DELTA:
+            sens_choices = choices
+            sens_lifts = lifts
+        else:
+            sens_kaid, _ = oof_kaid(population.scores, population.audit, delta)
+            sens_raw, _ = oof_action(raw, population.audit, raw_groups, delta)
+            sens_choices = {
+                "Lowest score": population.scores.argmin(axis=1),
+                "Raw gradient boosting": sens_raw,
+                "Equal-weight knowledge rules": rule_action(population.scores, delta),
+                "KAID": sens_kaid,
+            }
+            sens_lifts = {
+                name: realized_lift(population.latents, choice, delta)
+                for name, choice in sens_choices.items()
+            }
+        sensitivity.append(
+            {
+                "delta": delta,
+                "mean_lift": {name: _round(float(sens_lifts[name].mean())) for name in METHOD_ORDER},
+                "hit_rate": {
+                    name: _round(float((sens_choices[name] == true_lifts(population.latents, delta).argmax(1)).mean()))
+                    for name in METHOD_ORDER
+                },
+            }
+        )
+
+    case_id = select_case(lifts, choices, oracle)
+    case = {
+        "id": case_id,
+        "observed": [_round(float(v)) for v in population.scores[case_id]],
+        "latent": [_round(float(v)) for v in population.latents[case_id]],
+        "oracle": int(oracle[case_id]),
+        "oracle_name": ASSET_NAMES[int(oracle[case_id])],
+        "choices": {name: int(choices[name][case_id]) for name in METHOD_ORDER},
+        "choice_names": {name: ASSET_NAMES[int(choices[name][case_id])] for name in METHOD_ORDER},
+        "lifts": {name: _round(float(lifts[name][case_id])) for name in METHOD_ORDER},
     }
-    bands = {
-        "lagging": float((probabilities["KAID"] < 0.35).mean()),
-        "emerging": float(((probabilities["KAID"] >= 0.35) & (probabilities["KAID"] <= 0.65)).mean()),
-        "ready": float((probabilities["KAID"] > 0.65).mean()),
-    }
 
-    decision_rows = [
-        {
-            "label": "KAID counterfactual",
-            "rate": rates["KAID counterfactual"],
-            "ci": cis["hit_rate"]["KAID counterfactual"],
-        },
-        {
-            "label": "Equal-weight gap",
-            "rate": rates["Equal-weight gap"],
-            "ci": cis["hit_rate"]["Equal-weight gap"],
-        },
-        {
-            "label": "Importance only",
-            "rate": rates["Importance only"],
-            "ci": cis["hit_rate"]["Importance only"],
-        },
-    ]
-
-    plot_architecture("fig1_architecture.png")
-    plot_performance("fig2_performance.png", y_true, probabilities, decision_rows)
+    plot_framework("Figure_1.png")
+    plot_results("Figure_2.png", summary, ceiling, case)
 
     payload = {
         "seed": SEED,
         "n_enterprises": N_ENTERPRISES,
         "n_folds": N_FOLDS,
-        "n_bootstrap": N_BOOT,
-        "benchmark": BENCHMARK,
-        "prevalence": _round(float(y_true.mean())),
-        "ceiling_auc": _round(float(roc_auc_score(y_true, readiness_index(population.latents)))),
-        "dgp": {
-            "latent": "Beta(2, 2)",
-            "index": "2.40*know_how*know_who + 1.60*know_what*know_why",
-            "index_noise_sd": INDEX_NOISE,
-            "indicator_noise_sd": INDICATOR_NOISE,
+        "delta": DELTA,
+        "pair_weights": {"know_how_x_know_who": PAIR_MAIN, "know_what_x_know_why": PAIR_SECOND},
+        "indicator_noise_sd": INDICATOR_NOISE,
+        "audit_noise_sd": AUDIT_NOISE,
+        "ceiling_mean_lift": _round(ceiling),
+        "summary": summary,
+        "comparisons": comparisons,
+        "sensitivity": sensitivity,
+        "case": case,
+        "audit_mae": {
+            "KAID": _round(float(np.mean(np.abs(kaid_pred - population.audit)))),
+            "Raw gradient boosting": _round(float(np.mean(np.abs(raw_pred - population.audit)))),
         },
-        "n_decision_cases": int(mask.sum()),
-        "cronbach_alpha": {name: _round(value) for name, value in alphas.items()},
-        "metrics": {
-            name: {key: _round(value) for key, value in row.items()}
-            for name, row in metrics.items()
-        },
-        "auc_ci": {name: [_round(v) for v in bounds] for name, bounds in cis["auc"].items()},
-        "kaid_minus_raw_boosting_auc": [_round(v) for v in cis["kaid_minus_raw_boosting"]],
-        "kaid_minus_knowledge_logistic_auc": [_round(v) for v in cis["kaid_minus_knowledge_logistic"]],
-        "hit_rate": {name: _round(rate) for name, rate in rates.items()},
-        "hit_rate_ci": {name: [_round(v) for v in bounds] for name, bounds in cis["hit_rate"].items()},
-        "importance_mean": {
-            name: _round(float(value))
-            for name, value in zip(ASSET_NAMES, decisions["importance_mean"])
-        },
-        "readiness_bands": {name: _round(share) for name, share in bands.items()},
         "versions": {
             "numpy": np.__version__,
+            "scipy": __import__("scipy").__version__,
             "scikit-learn": __import__("sklearn").__version__,
             "matplotlib": matplotlib.__version__,
         },
@@ -518,34 +570,26 @@ def run() -> dict:
     with open("results.json", "w", encoding="utf-8") as handle:
         json.dump(payload, handle, indent=2)
         handle.write("\n")
-
     _check(payload)
     print(json.dumps(payload, indent=2))
     return payload
 
 
 def _check(payload: dict) -> None:
-    kaid_auc = payload["metrics"]["KAID"]["roc_auc"]
-    logistic_auc = payload["metrics"]["Knowledge logistic"]["roc_auc"]
-    raw_auc = payload["metrics"]["Raw gradient boosting"]["roc_auc"]
-    kaid_hit = payload["hit_rate"]["KAID counterfactual"]
-    gap_hit = payload["hit_rate"]["Equal-weight gap"]
-    if kaid_auc < 0.70:
-        raise RuntimeError(f"KAID discrimination is too weak to carry the note: {kaid_auc}")
-    if kaid_auc <= logistic_auc:
+    by_name = {row["method"]: row for row in payload["summary"]}
+    kaid = by_name["KAID"]["mean_lift"]
+    rules = by_name["Equal-weight knowledge rules"]["mean_lift"]
+    raw = by_name["Raw gradient boosting"]["mean_lift"]
+    gap = by_name["Lowest score"]["mean_lift"]
+    if not (kaid > rules > gap and kaid > raw):
         raise RuntimeError(
-            f"Boosting does not beat the linear knowledge model ({kaid_auc:.3f} vs {logistic_auc:.3f})."
+            "Expected KAID to beat the knowledge rules, raw boosting, and the lowest-score rule. "
+            f"Got KAID {kaid}, rules {rules}, raw {raw}, lowest {gap}."
         )
-    if kaid_auc <= raw_auc:
-        raise RuntimeError(
-            f"Knowledge scores do not beat raw boosting ({kaid_auc:.3f} vs {raw_auc:.3f})."
-        )
-    if kaid_hit <= gap_hit:
-        raise RuntimeError(
-            "KAID counterfactual does not beat the equal-weight gap rule "
-            f"({kaid_hit:.3f} vs {gap_hit:.3f})."
-        )
-    for name in ("fig1_architecture.png", "fig2_performance.png"):
+    holm_values = [row["holm_p"] for row in payload["comparisons"]]
+    if max(holm_values) >= 0.05:
+        raise RuntimeError(f"A Holm-adjusted comparison is not below 0.05: {holm_values}")
+    for name in ("Figure_1.png", "Figure_2.png"):
         with open(name, "rb") as handle:
             if handle.read(8) != b"\x89PNG\r\n\x1a\n":
                 raise RuntimeError(f"{name} is not a PNG.")

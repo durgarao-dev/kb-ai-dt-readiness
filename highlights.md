@@ -1,0 +1,4 @@
+- KAID funds one knowledge asset from two learned pair rules.
+- On 360 enterprises, KAID recovers 98.7% of the best lift.
+- Equal-weight rules and raw boosting miss the correct asset more often.
+- The benchmark is a disclosed simulation, not a field survey.
